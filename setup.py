@@ -1,9 +1,19 @@
 from setuptools import setup
 
+with open("README.md", "r") as fh:
+    long_description = fh.read()
+
 setup(
-    name='icinga2-telegram',
-    version='0.1',
-    py_modules=['icinga2-telegram'],
+    name='icinga2telegram',
+    version='0.2.0',
+    author='Max Rosin',
+    url='https://github.com/ekeih/icinga2telegram',
+    author_email='git@hackrid.de',
+    description='Send your Icinga2 alerts to Telegram',
+    long_description=long_description,
+    long_description_content_type='text/markdown',
+    license='LICENSE',
+    py_modules=['icinga2telegram'],
     install_requires=[
         'Click',
         'emoji',
@@ -12,6 +22,6 @@ setup(
     ],
     entry_points='''
         [console_scripts]
-        icinga2-telegram=main:cli
+        icinga2telegram=icinga2telegram:cli
     ''',
 )

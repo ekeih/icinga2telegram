@@ -1,22 +1,25 @@
+# Send your Icinga2 alerts to Telegram
+# Copyright (C) 2018  Max Rosin
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 import click
 import telegram
 
 from datetime import datetime
 from emoji import emojize
 from jinja2 import Template
-
-hoststates = {
-    0: 'UP',
-    1: 'DOWN'
-}
-
-servicestates = {
-    0: 'OK',
-    1: 'WARNING',
-    2: 'CRITICAL',
-    3: 'UNKNOWN',
-    None: None
-}
 
 @click.command()
 @click.option('--token', required=True, help='API token of the Telegram bot')
@@ -27,14 +30,14 @@ servicestates = {
 @click.option('--hostname', required=True)
 @click.option('--hostdisplayname')
 @click.option('--hostoutput')
-@click.option('--hoststate', required=True, type=click.IntRange(min=0, max=1))
+@click.option('--hoststate', required=True, type=click.Choice(['UP', 'DOWN']))
 @click.option('--address', required=True)
 @click.option('--address6')
 @click.option('--servicename')
 @click.option('--servicedisplayname')
 @click.option('--serviceoutput')
-@click.option('--servicestate', type=click.IntRange(min=0, max=3))
-@click.option('--notification-type', required=True, type=click.Choice(['Acknowledgement', 'Custom', 'DowntimeEnd', 'DowntimeRemoved', 'DowntimeStart', 'FlappingEnd', 'FlappingStart', 'Problem', 'Recovery']))
+@click.option('--servicestate', type=click.Choice(['OK', 'WARNING', 'CRITICAL', 'UNKNOWN']))
+@click.option('--notification-type', required=True, type=click.Choice(['ACKNOWLEDGEMENT', 'CUSTOM', 'DOWNTIMEEND', 'DOWNTIMEREMOVED', 'DOWNTIMESTART', 'FLAPPINGEND', 'FLAPPINGSTART', 'PROBLEM', 'RECOVERY']))
 @click.option('--notification-author')
 @click.option('--notification-comment')
 @click.option('--icingaweb2url', required=True)
@@ -43,40 +46,38 @@ def cli(token, chat, time, timeformat, emoji,
         servicename, servicedisplayname, serviceoutput, servicestate,
         notification_type, notification_author, notification_comment, icingaweb2url):
 
-    hoststate_human = hoststates[hoststate]
     hostdisplayname = hostname if hostdisplayname is None else hostdisplayname
     time_human = datetime.fromtimestamp(time).strftime(timeformat)
 
-    servicestate_human = servicestates[servicestate]
     if servicename:
         servicedisplayname = servicename if servicedisplayname is None else servicedisplayname
 
     if emoji:
-        if notification_type == 'Acknowledgement':
+        if notification_type == 'ACKNOWLEDGEMENT':
             emoji_emojize = ':heavy_check_mark:'
-        elif notification_type == 'Custom':
+        elif notification_type == 'CUSTOM':
             emoji_emojize = ':information_source:'
-        elif notification_type == 'DowntimeEnd':
+        elif notification_type == 'DOWNTIMEEND':
             emoji_emojize = ':play_button:'
-        elif notification_type == 'DowntimeRemoved':
+        elif notification_type == 'DOWNTIMEREMOVED':
             emoji_emojize = ':eject_button:'
-        elif notification_type == 'DowntimeStart':
+        elif notification_type == 'DOWNTIMESTART':
             emoji_emojize = ':stop_button:'
-        elif notification_type == 'FlappingEnd':
+        elif notification_type == 'FLAPPINGEND':
             emoji_emojize = ':shuffle_tracks_button:'
-        elif notification_type == 'FlappingStart':
+        elif notification_type == 'FLAPPINGSTART':
             emoji_emojize = ':shuffle_tracks_button:'
-        elif notification_type == 'Problem':
+        elif notification_type == 'PROBLEM':
             if servicestate is not None:
-                if servicestate == 2:
+                if servicestate == 'CRITICAL':
                     emoji_emojize = ':broken_heart:'
-                elif servicestate == 1:
+                elif servicestate == 'WARNING':
                     emoji_emojize = ':yellow_heart:'
                 else:
                     emoji_emojize = ':purple_heart:'
             else:
                 emoji_emojize = ':broken_heart:'
-        elif notification_type == 'Recovery':
+        elif notification_type == 'RECOVERY':
             emoji_emojize = ':green_heart:'
         else:
             emoji_emojize = ':information_source:'
@@ -107,12 +108,13 @@ Date: {{ time }}
 {{ hostoutput }}
 ```
 {% endif %}
+{% if notification_author %}{{ notification_author }}{% endif %}{% if notification_comment %}: {{ notification_comment }}{% endif %}
 """, trim_blocks=True)
 
     message = template.render(time = time_human, emoji_emojized = emoji_emojized, hostname = hostname, hostdisplayname = hostdisplayname,
-                              hostoutput = hostoutput, hoststate = hoststate_human, address = address, address6 = address6,
+                              hostoutput = hostoutput, hoststate = hoststate, address = address, address6 = address6,
                               servicename = servicename, servicedisplayname = servicedisplayname,
-                              serviceoutput = serviceoutput, servicestate = servicestate_human,
+                              serviceoutput = serviceoutput, servicestate = servicestate,
                               notification_type = notification_type, notification_author = notification_author,
                               notification_comment = notification_comment, icingaweb2url = icingaweb2url)
 
