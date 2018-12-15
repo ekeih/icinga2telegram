@@ -4,6 +4,8 @@ icinga2telegram is a small Python script to send your [Icinga2](https://icinga.c
 Telegram. It also adds emojis to your alerts to highlight the type and importance of the alert.
 (You can disable it with `--no-emojis`.)
 
+![Screenshot of icinga2telegram](screenshot.png)
+
 ## Why Python instead of a simple Bash script?
 Several other people implemented Icinga2-Telegram notifications by writing a simple bash
 script. Most of the time this works but there are a few things I do not like about the
@@ -24,7 +26,7 @@ service notifications.
 ## Installation and Setup
 
 ### Install icinga2telegram
-It is recommended (but not required) to install icinga2telegram in a python virtualenv.
+It is recommended (but not required) to install icinga2telegram in a Python virtualenv.
 ```
 pip install icinga2telegram
 ````
@@ -59,7 +61,7 @@ curl -s 'https://api.telegram.org/botTOKEN/getUpdates' | jq '.result[].message.c
 Copy your CHAT-ID. You will need it for the Icinga2 configuration.
 If you want to add more users everyone has to send a message to your bot and you need to
 extract the CHAT-IDs as shown above.
-(You can also invite your bot to groups but then you have write a message like `@yourbot foo`
+(You can also invite your bot to groups but then you have to write a message like `@yourbot foo`
 to the group to send the message (with your CHAT-ID) to your bot.)
 
 
