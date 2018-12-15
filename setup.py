@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name='icinga2telegram',
-    version='0.2.0',
+    version='0.2.2',
     author='Max Rosin',
     url='https://github.com/ekeih/icinga2telegram',
     author_email='git@hackrid.de',
