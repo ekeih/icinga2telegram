@@ -13,10 +13,10 @@ Bash solutions:
 
 1. They use two scripts with almost the same content.
 2. Bash can screw up really bad when your alert output contains special characters.
-3. The Bash solutions are based on enviroment variables. This does not work natively with
-Icinga2 director as it only supports arguments in command defintions.
+3. The Bash solutions are based on environment variables. This does not work natively with
+Icinga2 director as it only supports arguments in command definitions.
 
-Obviously the Python implementation has a bigger footbrint than the Bash solution. It
+Obviously the Python implementation has a bigger footprint than the Bash solution. It
 requires a Python interpreter and installs several Python packages as dependencies. This
 could be a problem for an embedded system with very limited resources but most Icinga2
 instances run on powerful machines and the icinga2telegram footprint does not matter there.
