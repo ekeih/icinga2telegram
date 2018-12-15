@@ -34,12 +34,12 @@ pip install icinga2telegram
 Run `icinga2telegram --help` to see all available options.
 
 ### Create a Telegram Bot
-You need to create Telegram Bot by talking to the Botfather of Telegram. Please follow
+You need to create a Telegram bot by talking to the Botfather of Telegram. Please follow
 the [official instructions](https://core.telegram.org/bots#creating-a-new-bot) and
 copy your bot token. You will need it for the Icinga2 configuration.
 
 ### Get your CHAT-ID
-Now you need to talk to your new bot as a bot can not start a new chat. Just open a
+Now you need to talk to your new bot because a bot can not start a new chat. Just open a
 chat with your bot and send a message. Afterwards you have to fetch the CHAT-ID of
 the conversation between you and your bot. Replace TOKEN with your actual token.
 
