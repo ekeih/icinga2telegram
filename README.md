@@ -7,9 +7,9 @@ Telegram. It also adds emojis to your alerts to highlight the type and importanc
 ![Screenshot of icinga2telegram](screenshot.png)
 
 ## Why Python instead of a simple Bash script?
-Several other people implemented Icinga2-Telegram notifications by writing a simple bash
+Several other people implemented Icinga2-Telegram notifications by writing a simple Bash
 script. Most of the time this works but there are a few things I do not like about the
-bash solutions:
+Bash solutions:
 
 1. They use two scripts with almost the same content.
 2. Bash can screw up really bad when your alert output contains special characters.
