@@ -15,13 +15,98 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import click
+import icinga2api.client
+import json
+import logging
+import pathlib
 import telegram
 
 from datetime import datetime
 from emoji import emojize
 from jinja2 import Template
+from telegram.ext import CallbackQueryHandler, CommandHandler, Updater
 
-@click.command()
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.DEBUG)
+logging.getLogger('JobQueue').setLevel(logging.INFO)
+logging.getLogger('telegram').setLevel(logging.INFO)
+logging.getLogger('requests').setLevel(logging.INFO)
+logging.getLogger('telegram.vendor.ptb_urllib3').setLevel(logging.ERROR)
+
+SPOOL = '/tmp/icinga2telegram/spool'
+pathlib.Path(SPOOL).mkdir(parents=True, exist_ok=True)
+
+icinga2client = None
+
+def start(bot, update):
+    """Telegram command handler for /start and /whoami. Sends the chat ID to the user."""
+    logging.debug('%s: start/whois handler' % update.message.chat_id)
+    bot.send_message(chat_id=update.message.chat_id, text='Your chat ID is: %s' % update.message.chat_id)
+
+
+def acknowledge(_, update):
+    """Telegram query handler to acknowledge an alert."""
+    logging.debug('%s: acknowledge handler for message %s' % (update.callback_query.message.chat_id,
+                                                              update.callback_query.data))
+    spool_file_path = '%s/%s-%s.json' % (SPOOL,
+                                         update.callback_query.message.chat_id,
+                                         update.callback_query.data)
+
+    with open(spool_file_path, 'r') as spool_file:
+        logging.debug('%s: Reading message from %s' % (update.callback_query.message.chat_id, spool_file_path))
+        spool_content = json.load(spool_file)
+
+    if 'servicename' in spool_content:
+        icinga2client.actions.acknowledge_problem(object_type='Service',
+                                                  filters='host.name == "%s" && service.name "%s"' % (spool_content['hostname'], spool_content['servicename']),
+                                                  author=update.callback_query.from_user.mention_markdown(),
+                                                  comment='Dontime via icinga2telegram',
+                                                  sticky=False,
+                                                  notify=True)
+    else:
+        icinga2client.actions.acknowledge_problem(object_type='Host',
+                                                  filters='host.name == "%s"' % spool_content['hostname'],
+                                                  author=update.callback_query.from_user.mention_markdown(),
+                                                  comment='Dontime via icinga2telegram',
+                                                  sticky=False,
+                                                  notify=True)
+
+    update.callback_query.message.edit_text(update.callback_query.message.text_markdown,
+                                            parse_mode = telegram.ParseMode.MARKDOWN,
+                                            disable_web_page_preview = True)
+
+    pathlib.Path(spool_file_path).unlink()
+
+
+@click.group()
+def cli():
+    pass
+
+
+@cli.command()
+@click.option('--token', required=True, help='API token of the Telegram bot')
+@click.option('--icinga2-cacert', help='CA certificate of your Icinga2 API')
+@click.option('--icinga2-api-url', required=True, help='Icinga2 API URL/')
+@click.option('--icinga2-api-user', required=True, help='Icinga2 API user')
+@click.option('--icinga2-api-password', required=True, help='Icinga2 API password')
+def daemon(token, icinga2_cacert, icinga2_api_url, icinga2_api_user, icinga2_api_password):
+    global icinga2client
+    updater = Updater(token=token)
+
+    dispatcher = updater.dispatcher
+    dispatcher.add_handler(CommandHandler('start', start))
+    dispatcher.add_handler(CommandHandler('whoami', start))
+    dispatcher.add_handler(CallbackQueryHandler(acknowledge))
+
+    icinga2client = icinga2api.client.Client(url=icinga2_api_url,
+                                             username=icinga2_api_user,
+                                             password=icinga2_api_password,
+                                             ca_certificate=icinga2_cacert)
+
+    updater.start_polling()
+    updater.idle()
+
+
+@cli.command()
 @click.option('--token', required=True, help='API token of the Telegram bot')
 @click.option('--chat', required=True, help='Chat ID if the Telegram chat')
 @click.option('--time', required=True, type=click.INT, help='Time of the event as a UNIX timestamp')
@@ -41,7 +126,7 @@ from jinja2 import Template
 @click.option('--notification-author')
 @click.option('--notification-comment')
 @click.option('--icingaweb2url', required=True)
-def cli(token, chat, time, timeformat, emoji,
+def notification(token, chat, time, timeformat, emoji,
         hostname, hostdisplayname, hostoutput, hoststate, address, address6,
         servicename, servicedisplayname, serviceoutput, servicestate,
         notification_type, notification_author, notification_comment, icingaweb2url):
@@ -111,7 +196,7 @@ Date: {{ time }}
 {% if notification_author %}{{ notification_author }}{% endif %}{% if notification_comment %}: {{ notification_comment }}{% endif %}
 """, trim_blocks=True)
 
-    message = template.render(time = time_human, emoji_emojized = emoji_emojized, hostname = hostname, hostdisplayname = hostdisplayname,
+    message_text = template.render(time = time_human, emoji_emojized = emoji_emojized, hostname = hostname, hostdisplayname = hostdisplayname,
                               hostoutput = hostoutput, hoststate = hoststate, address = address, address6 = address6,
                               servicename = servicename, servicedisplayname = servicedisplayname,
                               serviceoutput = serviceoutput, servicestate = servicestate,
@@ -119,4 +204,30 @@ Date: {{ time }}
                               notification_comment = notification_comment, icingaweb2url = icingaweb2url)
 
     bot = telegram.Bot(token=token)
-    bot.send_message(chat, message, parse_mode=telegram.ParseMode.MARKDOWN, disable_web_page_preview=True)
+    message = bot.send_message(chat, message_text, parse_mode=telegram.ParseMode.MARKDOWN, disable_web_page_preview=True)
+
+    if notification_type == 'PROBLEM':
+        keyboard = [[telegram.InlineKeyboardButton('Acknowledge', callback_data=message.message_id)]]
+        reply_markup = telegram.InlineKeyboardMarkup(keyboard)
+
+        message.edit_text(message_text, parse_mode=telegram.ParseMode.MARKDOWN, disable_web_page_preview=True, reply_markup=reply_markup)
+
+        if servicename:
+            spool_content = {
+                'chat_id': message.chat_id,
+                'message_id': message.message_id,
+                'hostname': hostname,
+                'servicename': servicename,
+            }
+        else:
+            spool_content = {
+                'chat_id': message.chat_id,
+                'message_id': message.message_id,
+                'hostname': hostname,
+            }
+
+        spool_file_path = '%s/%s-%s.json' % (SPOOL, message.chat_id, message.message_id)
+
+        with open(spool_file_path, 'w') as spool_file:
+            logging.debug('%s: Storing message in %s' % (message.chat_id, spool_file_path))
+            json.dump(spool_content, spool_file, indent=2)
