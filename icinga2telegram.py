@@ -37,43 +37,59 @@ pathlib.Path(SPOOL).mkdir(parents=True, exist_ok=True)
 
 icinga2client = None
 
-def start(bot, update):
+
+def acknowledge_host(hostname, author):
+    """
+    Acknowledge a host alert.
+    :param hostname: The hostname.
+    :param author: The author.
+    """
+    icinga2client.actions.acknowledge_problem(object_type='Host',
+                                              filters='host.name == "{}"'.format(hostname),
+                                              author=author,
+                                              comment='Downtime via icinga2telegram',
+                                              sticky=False,
+                                              notify=True)
+
+
+def acknowledge_service(hostname, servicename, author):
+    """
+    Acknowledge a service alert.
+    :param hostname: The hostname.
+    :param servicename: The servicename.
+    :param author: The author.
+    """
+    icinga2client.actions.acknowledge_problem(object_type='Service',
+                                              filters='host.name == "{}" && service.name "{}"'.format(hostname, servicename),
+                                              author=author,
+                                              comment='Downtime via icinga2telegram',
+                                              sticky=False,
+                                              notify=True)
+
+
+def handler_start(bot, update):
     """Telegram command handler for /start and /whoami. Sends the chat ID to the user."""
-    logging.debug('%s: start/whois handler' % update.message.chat_id)
-    bot.send_message(chat_id=update.message.chat_id, text='Your chat ID is: %s' % update.message.chat_id)
+    logging.debug('{}: start/whois handler'.format(update.message.chat_id))
+    bot.send_message(chat_id=update.message.chat_id, text='Your chat ID is: {}'.format(update.message.chat_id))
 
 
-def acknowledge(_, update):
+def handler_acknowledge(_, update):
     """Telegram query handler to acknowledge an alert."""
-    logging.debug('%s: acknowledge handler for message %s' % (update.callback_query.message.chat_id,
-                                                              update.callback_query.data))
-    spool_file_path = '%s/%s-%s.json' % (SPOOL,
-                                         update.callback_query.message.chat_id,
-                                         update.callback_query.data)
+    logging.debug('{}: acknowledge handler for message {}'.format(update.callback_query.message.chat_id, update.callback_query.data))
+    spool_file_path = '{}/{}-{}.json'.format(SPOOL,update.callback_query.message.chat_id, update.callback_query.data)
 
     with open(spool_file_path, 'r') as spool_file:
-        logging.debug('%s: Reading message from %s' % (update.callback_query.message.chat_id, spool_file_path))
+        logging.debug('{}: Reading message from {}'.format(update.callback_query.message.chat_id, spool_file_path))
         spool_content = json.load(spool_file)
 
     if 'servicename' in spool_content:
-        icinga2client.actions.acknowledge_problem(object_type='Service',
-                                                  filters='host.name == "%s" && service.name "%s"' % (spool_content['hostname'], spool_content['servicename']),
-                                                  author=update.callback_query.from_user.mention_markdown(),
-                                                  comment='Dontime via icinga2telegram',
-                                                  sticky=False,
-                                                  notify=True)
+        acknowledge_service(spool_content['hostname'], spool_content['servicename'], update.callback_query.from_user.mention_markdown())
     else:
-        icinga2client.actions.acknowledge_problem(object_type='Host',
-                                                  filters='host.name == "%s"' % spool_content['hostname'],
-                                                  author=update.callback_query.from_user.mention_markdown(),
-                                                  comment='Dontime via icinga2telegram',
-                                                  sticky=False,
-                                                  notify=True)
+        acknowledge_host(spool_content['hostname'], update.callback_query.from_user.mention_markdown())
 
     update.callback_query.message.edit_text(update.callback_query.message.text_markdown,
                                             parse_mode = telegram.ParseMode.MARKDOWN,
                                             disable_web_page_preview = True)
-
     pathlib.Path(spool_file_path).unlink()
 
 
@@ -90,18 +106,15 @@ def cli():
 @click.option('--icinga2-api-password', required=True, help='Icinga2 API password')
 def daemon(token, icinga2_cacert, icinga2_api_url, icinga2_api_user, icinga2_api_password):
     global icinga2client
-    updater = Updater(token=token)
-
-    dispatcher = updater.dispatcher
-    dispatcher.add_handler(CommandHandler('start', start))
-    dispatcher.add_handler(CommandHandler('whoami', start))
-    dispatcher.add_handler(CallbackQueryHandler(acknowledge))
-
     icinga2client = icinga2api.client.Client(url=icinga2_api_url,
                                              username=icinga2_api_user,
                                              password=icinga2_api_password,
                                              ca_certificate=icinga2_cacert)
-
+    updater = Updater(token=token)
+    dispatcher = updater.dispatcher
+    dispatcher.add_handler(CommandHandler('start', handler_start))
+    dispatcher.add_handler(CommandHandler('whoami', handler_start))
+    dispatcher.add_handler(CallbackQueryHandler(handler_acknowledge))
     updater.start_polling()
     updater.idle()
 
@@ -197,11 +210,11 @@ Date: {{ time }}
 """, trim_blocks=True)
 
     message_text = template.render(time = time_human, emoji_emojized = emoji_emojized, hostname = hostname, hostdisplayname = hostdisplayname,
-                              hostoutput = hostoutput, hoststate = hoststate, address = address, address6 = address6,
-                              servicename = servicename, servicedisplayname = servicedisplayname,
-                              serviceoutput = serviceoutput, servicestate = servicestate,
-                              notification_type = notification_type, notification_author = notification_author,
-                              notification_comment = notification_comment, icingaweb2url = icingaweb2url)
+                                   hostoutput = hostoutput, hoststate = hoststate, address = address, address6 = address6,
+                                   servicename = servicename, servicedisplayname = servicedisplayname,
+                                   serviceoutput = serviceoutput, servicestate = servicestate,
+                                   notification_type = notification_type, notification_author = notification_author,
+                                   notification_comment = notification_comment, icingaweb2url = icingaweb2url)
 
     bot = telegram.Bot(token=token)
     message = bot.send_message(chat, message_text, parse_mode=telegram.ParseMode.MARKDOWN, disable_web_page_preview=True)
@@ -226,8 +239,8 @@ Date: {{ time }}
                 'hostname': hostname,
             }
 
-        spool_file_path = '%s/%s-%s.json' % (SPOOL, message.chat_id, message.message_id)
+        spool_file_path = '{}/{}-{}.json'.format(SPOOL, message.chat_id, message.message_id)
 
         with open(spool_file_path, 'w') as spool_file:
-            logging.debug('%s: Storing message in %s' % (message.chat_id, spool_file_path))
+            logging.debug('{}: Storing message in {}'.format(message.chat_id, spool_file_path))
             json.dump(spool_content, spool_file, indent=2)
