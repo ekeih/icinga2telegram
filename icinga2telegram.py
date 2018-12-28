@@ -15,7 +15,6 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import click
-import icinga2api.client
 import json
 import logging
 import pathlib
@@ -47,7 +46,7 @@ def acknowledge_host(hostname, author):
     icinga2client.actions.acknowledge_problem(object_type='Host',
                                               filters='host.name == "{}"'.format(hostname),
                                               author=author,
-                                              comment='Downtime via icinga2telegram',
+                                              comment='ACK via icinga2telegram',
                                               sticky=False,
                                               notify=True)
 
@@ -62,7 +61,7 @@ def acknowledge_service(hostname, servicename, author):
     icinga2client.actions.acknowledge_problem(object_type='Service',
                                               filters='host.name == "{}" && service.name "{}"'.format(hostname, servicename),
                                               author=author,
-                                              comment='Downtime via icinga2telegram',
+                                              comment='ACK via icinga2telegram',
                                               sticky=False,
                                               notify=True)
 
@@ -76,21 +75,25 @@ def handler_start(bot, update):
 def handler_acknowledge(_, update):
     """Telegram query handler to acknowledge an alert."""
     logging.debug('{}: acknowledge handler for message {}'.format(update.callback_query.message.chat_id, update.callback_query.data))
-    spool_file_path = '{}/{}-{}.json'.format(SPOOL,update.callback_query.message.chat_id, update.callback_query.data)
+    try:
+        spool_file_path = '{}/{}-{}.json'.format(SPOOL,update.callback_query.message.chat_id, update.callback_query.data)
 
-    with open(spool_file_path, 'r') as spool_file:
-        logging.debug('{}: Reading message from {}'.format(update.callback_query.message.chat_id, spool_file_path))
-        spool_content = json.load(spool_file)
+        with open(spool_file_path, 'r') as spool_file:
+            logging.debug('{}: Reading message from {}'.format(update.callback_query.message.chat_id, spool_file_path))
+            spool_content = json.load(spool_file)
 
-    if 'servicename' in spool_content:
-        acknowledge_service(spool_content['hostname'], spool_content['servicename'], update.callback_query.from_user.mention_markdown())
-    else:
-        acknowledge_host(spool_content['hostname'], update.callback_query.from_user.mention_markdown())
+        if 'servicename' in spool_content:
+            acknowledge_service(spool_content['hostname'], spool_content['servicename'], update.callback_query.from_user.mention_markdown())
+        else:
+            acknowledge_host(spool_content['hostname'], update.callback_query.from_user.mention_markdown())
 
-    update.callback_query.message.edit_text(update.callback_query.message.text_markdown,
-                                            parse_mode = telegram.ParseMode.MARKDOWN,
-                                            disable_web_page_preview = True)
-    pathlib.Path(spool_file_path).unlink()
+        update.callback_query.message.edit_text(update.callback_query.message.text_markdown,
+                                                parse_mode = telegram.ParseMode.MARKDOWN,
+                                                disable_web_page_preview = True)
+        pathlib.Path(spool_file_path).unlink()
+    except Exception as e:
+        logging.error('Unable to acknowledge the alert: {}'.format(e))
+        update.callback_query.answer(text='Unable to acknowledge the alert. Please use icingaweb2 instead.')
 
 
 @click.group()
@@ -106,6 +109,12 @@ def cli():
 @click.option('--icinga2-api-password', required=True, help='Icinga2 API password')
 def daemon(token, icinga2_cacert, icinga2_api_url, icinga2_api_user, icinga2_api_password):
     global icinga2client
+    try:
+        import icinga2api.client
+    except ImportError:
+        import sys
+        logging.error('If you want to run icinga2telegram as a daemon to handle acknowledgements you need to install icinga2api.')
+        sys.exit(1)
     icinga2client = icinga2api.client.Client(url=icinga2_api_url,
                                              username=icinga2_api_user,
                                              password=icinga2_api_password,
