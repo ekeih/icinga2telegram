@@ -148,10 +148,11 @@ def daemon(token, icinga2_cacert, icinga2_api_url, icinga2_api_user, icinga2_api
 @click.option('--notification-author')
 @click.option('--notification-comment')
 @click.option('--icingaweb2url', required=True)
+@click.option('--ack/--no-ack', default=False, help='Enable or disable the acknowledgement button for alerts. (Disabled by default.)')
 def notification(token, chat, time, timeformat, emoji,
         hostname, hostdisplayname, hostoutput, hoststate, address, address6,
         servicename, servicedisplayname, serviceoutput, servicestate,
-        notification_type, notification_author, notification_comment, icingaweb2url):
+        notification_type, notification_author, notification_comment, icingaweb2url, ack):
 
     hostdisplayname = hostname if hostdisplayname is None else hostdisplayname
     time_human = datetime.fromtimestamp(time).strftime(timeformat)
@@ -228,7 +229,7 @@ Date: {{ time }}
     bot = telegram.Bot(token=token)
     message = bot.send_message(chat, message_text, parse_mode=telegram.ParseMode.MARKDOWN, disable_web_page_preview=True)
 
-    if notification_type == 'PROBLEM':
+    if notification_type == 'PROBLEM' and ack:
         keyboard = [[telegram.InlineKeyboardButton('Acknowledge', callback_data=message.message_id)]]
         reply_markup = telegram.InlineKeyboardMarkup(keyboard)
 
